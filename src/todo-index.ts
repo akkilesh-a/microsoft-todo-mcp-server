@@ -7,8 +7,55 @@ import dotenv from "dotenv"
 import express, { Request, Response, NextFunction } from "express"
 import { randomUUID } from "crypto"
 import { ConfidentialClientApplication, Configuration, LogLevel } from "@azure/msal-node"
-import { tokenManager } from "./token-manager.js"
 import { saveList, getAllLists, updateList, removeList, mergeLists } from "./list-registry.js"
+
+interface StoredTokens {
+  accessToken: string
+  refreshToken: string
+  expiresAt: number
+  clientId?: string
+  clientSecret?: string
+  tenantId?: string
+  [key: string]: unknown
+}
+
+async function loadTokens(): Promise<StoredTokens | null> {
+  const tokenPath = process.env.MSTODO_TOKEN_FILE ?? join(process.cwd(), "tokens.json")
+  if (!existsSync(tokenPath)) return null
+  try {
+    const tokens: StoredTokens = JSON.parse(readFileSync(tokenPath, "utf8"))
+    if (Date.now() < tokens.expiresAt) return tokens
+    // Token expired — attempt refresh
+    const clientId = tokens.clientId ?? process.env.CLIENT_ID
+    const clientSecret = tokens.clientSecret ?? process.env.CLIENT_SECRET
+    const tenantId = tokens.tenantId ?? process.env.TENANT_ID ?? "consumers"
+    if (!clientId || !clientSecret || !tokens.refreshToken) return null
+    const resp = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: tokens.refreshToken,
+        grant_type: "refresh_token",
+        scope: "offline_access Tasks.Read Tasks.ReadWrite Tasks.Read.Shared Tasks.ReadWrite.Shared User.Read",
+      }),
+    })
+    if (!resp.ok) { console.error("Token refresh failed:", await resp.text()); return null }
+    const data = await resp.json() as any
+    const refreshed: StoredTokens = {
+      ...tokens,
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token ?? tokens.refreshToken,
+      expiresAt: Date.now() + data.expires_in * 1000 - 5 * 60 * 1000,
+    }
+    writeFileSync(tokenPath, JSON.stringify(refreshed, null, 2), "utf8")
+    return refreshed
+  } catch (err) {
+    console.error("Error loading tokens:", err)
+    return null
+  }
+}
 import { renderDashboard } from "./dashboard.js"
 
 // Load environment variables
@@ -129,7 +176,7 @@ async function getAccessToken(): Promise<string | null> {
     console.error("getAccessToken called")
 
     // Use the token manager to get tokens (handles all sources and refresh)
-    const tokens = await tokenManager.getTokens()
+    const tokens = await loadTokens()
 
     if (tokens) {
       console.error(`Successfully retrieved valid token`)
@@ -212,7 +259,7 @@ server.tool(
   "Check if you're authenticated with Microsoft Graph API. Shows current token status and expiration time, and indicates if the token needs to be refreshed.",
   {},
   async () => {
-    const tokens = await tokenManager.getTokens()
+    const tokens = await loadTokens()
 
     if (!tokens) {
       return {
@@ -2006,7 +2053,7 @@ export async function startServer(config?: ServerConfig): Promise<void> {
 
     // Dashboard
     app.get("/", async (_req: Request, res: Response) => {
-      const tokens = await tokenManager.getTokens()
+      const tokens = await loadTokens()
       let userEmail: string | undefined
       if (tokens) {
         try {

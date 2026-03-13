@@ -1,7 +1,7 @@
 {
-  "name": "microsoft-todo-mcp-server",
+  "name": "microsoft-todo-mcp-server-self-hosted",
   "version": "1.2.0",
-  "description": "Microsoft Todo MCP service for Claude and Cursor. Fork of @jhirono/todomcp",
+  "description": "Self-hosted Microsoft To Do MCP server with OAuth dashboard and SQLite list registry — fixes personal account list limitations",
   "main": "dist/todo-index.js",
   "dependencies": {
     "@azure/msal-node": "^3.8.1",
@@ -12,43 +12,31 @@
     "zod": "^3.25.76"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsup",
-    "build:win": "tsup && node -e \"console.log('Build complete')\"",
     "start": "node dist/todo-index.js",
-    "cli": "node dist/cli.js",
-    "auth": "node dist/auth-server.js",
-    "setup": "node dist/setup.js",
-    "dev": "pnpm run build && node dist/cli.js",
-    "create-config": "node dist/create-mcp-config.js",
-    "format": "prettier --write \"src/**/*.{ts,js,json}\" \"*.{json,md}\"",
-    "format:check": "prettier --check \"src/**/*.{ts,js,json}\" \"*.{json,md}\"",
-    "lint": "pnpm run format:check",
+    "dev": "npm run build && node dist/todo-index.js",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm run format:check && pnpm run typecheck",
-    "check:fix": "pnpm run format && pnpm run typecheck",
-    "ci": "pnpm run check && pnpm run build",
-    "precommit": "pnpm run check:fix && pnpm run build",
-    "prepublishOnly": "pnpm run ci",
-    "postinstall": "echo 'Run: npx microsoft-todo-mcp-server setup' to configure"
+    "format": "prettier --write \"src/**/*.{ts,html,json}\" \"*.{json,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,html,json}\" \"*.{json,md}\""
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jordanburke/microsoft-todo-mcp-server.git"
+    "url": "git+https://github.com/akkilesh-a/microsoft-todo-mcp-server-self-hosted.git"
   },
   "keywords": [
     "mcp",
     "cursor",
     "claude",
     "microsoft-todo",
-    "todo"
+    "todo",
+    "self-hosted"
   ],
-  "author": "Jordan Burke <jordan.burke@gmail.com>",
+  "author": "Akkilesh A",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/jordanburke/microsoft-todo-mcp-server/issues"
+    "url": "https://github.com/akkilesh-a/microsoft-todo-mcp-server-self-hosted/issues"
   },
-  "homepage": "https://github.com/jordanburke/microsoft-todo-mcp-server#readme",
+  "homepage": "https://github.com/akkilesh-a/microsoft-todo-mcp-server-self-hosted#readme",
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.5",
@@ -58,17 +46,7 @@
     "typescript": "^5.9.3"
   },
   "type": "module",
-  "bin": {
-    "microsoft-todo-mcp-server": "./dist/cli.js",
-    "mstodo": "./dist/cli.js",
-    "mstodo-config": "./dist/create-mcp-config.js",
-    "mstodo-setup": "./dist/setup.js"
-  },
   "files": [
     "dist"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
-  "packageManager": "pnpm@10.21.0+sha512.da3337267e400fdd3d479a6c68079ac6db01d8ca4f67572083e722775a796788a7a9956613749e000fac20d424b594f7a791a5f4e2e13581c5ef947f26968a40"
+  ]
 }

@@ -4,11 +4,6 @@ import { copyFileSync } from 'fs'
 export default defineConfig({
   entry: [
     'src/todo-index.ts',
-    'src/cli.ts',
-    'src/create-mcp-config.ts',
-    'src/auth-server.ts',
-    'src/setup.ts',
-    'src/token-manager.ts',
     'src/list-registry.ts',
     'src/dashboard.ts'
   ],
