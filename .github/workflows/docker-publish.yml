@@ -1,0 +1,94 @@
+name: Publish Docker image
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  # Docker Hub is skipped automatically when DOCKERHUB_USERNAME is unset, so forks and
+  # contributors' pull requests still get their builds checked without needing credentials.
+  DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/microsoft-todo-mcp-server-self-hosted
+  GHCR_IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # for ghcr.io
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Emulation for the arm64 leg. better-sqlite3 normally downloads a prebuilt binary
+      # rather than compiling, so this stays cheap despite QEMU.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        # Pull requests from forks cannot read secrets, so pushing is limited to this repo.
+        if: github.event_name != 'pull_request' && vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            name=${{ env.DOCKERHUB_IMAGE }},enable=${{ vars.DOCKERHUB_USERNAME != '' }}
+            name=${{ env.GHCR_IMAGE }}
+          # A v1.2.3 tag publishes 1.2.3, 1.2 and 1 so downstream compose files can pin at
+          # whichever level of churn they are willing to accept. `latest` only ever moves on
+          # a release tag — never on a main-branch push, which would make it a moving target.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=edge,branch=main
+            type=ref,event=pr
+          labels: |
+            org.opencontainers.image.title=Microsoft To Do MCP Server (self-hosted)
+            org.opencontainers.image.description=Self-hosted Microsoft To Do MCP server with OAuth dashboard, SQLite or Postgres storage
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the built image
+        # Rebuilds for the runner's own architecture only — a multi-arch manifest cannot be
+        # loaded into the local daemon. Catches the class of failure where the image builds
+        # cleanly but exits on boot.
+        run: |
+          docker buildx build --platform linux/amd64 --load -t smoke:test .
+          docker run -d --name smoke -p 3001:3001 \
+            -e CLIENT_ID=00000000-0000-0000-0000-000000000000 \
+            -e CLIENT_SECRET=dummy -e MCP_API_KEY=k -e DASHBOARD_PASSWORD=p smoke:test
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3001/health && break || sleep 1
+          done
+          curl -sf http://localhost:3001/health || { docker logs smoke; exit 1; }
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:3001/mcp)" = "401"
+          docker rm -f smoke

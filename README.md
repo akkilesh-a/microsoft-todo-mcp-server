@@ -201,6 +201,43 @@ Each migration is applied in a transaction together with its version row, so a f
 
 ---
 
+## Docker
+
+Images are published for `linux/amd64` and `linux/arm64`:
+
+```bash
+docker pull spacecentre/microsoft-todo-mcp-server-self-hosted:latest
+```
+
+```yaml
+services:
+  todo-mcp:
+    image: spacecentre/microsoft-todo-mcp-server-self-hosted:latest
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - todo_data:/data
+    ports:
+      - "3001:3001"
+
+volumes:
+  todo_data:
+```
+
+The image defaults `MSTODO_TOKEN_FILE` and `LIST_DB_PATH` into `/data`, so one volume covers everything that has to survive a container recreate. On Postgres, `lists.db` goes unused and the volume holds only `tokens.json` — which still has to persist, or you re-authenticate after every deploy.
+
+Migrations run on boot, so upgrading is `docker compose pull && docker compose up -d` with no extra step.
+
+It runs as the non-root `node` user and ships a `HEALTHCHECK` against `/health`, the one route exempt from the API key so it works whether or not `MCP_API_KEY` is set.
+
+### Building it yourself
+
+```bash
+docker build -t todo-mcp .
+```
+
+---
+
 ## Security
 
 | Layer | Protection |

@@ -6,7 +6,7 @@ export default defineConfig({
     'src/todo-index.ts',
     'src/list-registry.ts',
     'src/dashboard.ts',
-    'src/db/migrate.ts'
+    'src/db/migrate-cli.ts'
   ],
   outDir: 'dist',
   format: ['esm'],

@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.{ts,html,json}\" \"*.{json,md}\"",
     "format:check": "prettier --check \"src/**/*.{ts,html,json}\" \"*.{json,md}\"",
-    "migrate": "node dist/db/migrate.js"
+    "migrate": "node dist/db/migrate-cli.js"
   },
   "repository": {
     "type": "git",

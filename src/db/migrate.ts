@@ -85,25 +85,8 @@ export async function migrate(options: { silent?: boolean } = {}): Promise<Migra
   }
 }
 
-// `npm run migrate` — also what the container entrypoint calls before starting the server.
-// Paths are resolved on both sides rather than compared as file:// strings, so this still
-// detects direct invocation on Windows, where argv[1] is a drive-letter path.
-const invokedDirectly = !!process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))
-
-if (invokedDirectly) {
-  const { default: dotenv } = await import("dotenv")
-  dotenv.config()
-  migrate()
-    .then((r) => {
-      console.error(
-        r.applied.length > 0
-          ? `Migration complete: applied ${r.applied.length} migration(s).`
-          : "Migration complete: no changes.",
-      )
-      process.exit(0)
-    })
-    .catch((err) => {
-      console.error("Migration failed:", err instanceof Error ? err.message : err)
-      process.exit(1)
-    })
-}
+// The `npm run migrate` entry point lives in migrate-cli.ts, NOT here. This module is
+// bundled into the server, and a run-if-invoked-directly guard would compare import.meta.url
+// against argv[1] — both of which point at todo-index.js once inlined. The guard would pass,
+// the CLI would run on import, and the server would exit 0 after migrating instead of
+// listening.
