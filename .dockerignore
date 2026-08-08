@@ -1,0 +1,17 @@
+node_modules
+dist
+build
+.git
+.github
+.env
+.env.*
+!.env.example
+tokens.json
+lists.db
+*.db
+npm-debug.log
+.vscode
+.idea
+.DS_Store
+README.md
+LICENSE
