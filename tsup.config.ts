@@ -5,7 +5,8 @@ export default defineConfig({
   entry: [
     'src/todo-index.ts',
     'src/list-registry.ts',
-    'src/dashboard.ts'
+    'src/dashboard.ts',
+    'src/db/migrate-cli.ts'
   ],
   outDir: 'dist',
   format: ['esm'],
@@ -15,7 +16,11 @@ export default defineConfig({
   splitting: false,
   sourcemap: true,
   dts: true,
-  external: ['dotenv'],
+  // The two database drivers must stay external. better-sqlite3 is a native addon and
+  // cannot be bundled at all; pg is left external so that the lazy `await import()` in each
+  // driver is still a real runtime import, which is what lets a Postgres-only deployment
+  // run without better-sqlite3 present and vice versa.
+  external: ['dotenv', 'better-sqlite3', 'pg'],
   esbuildOptions(options) {
     options.platform = 'node'
   },

@@ -8,6 +8,7 @@ import express, { Request, Response, NextFunction } from "express"
 import { randomUUID } from "crypto"
 import { ConfidentialClientApplication, Configuration, LogLevel } from "@azure/msal-node"
 import { saveList, getAllLists, updateList, removeList, mergeLists } from "./list-registry.js"
+import { migrate } from "./db/migrate.js"
 
 interface StoredTokens {
   accessToken: string
@@ -369,7 +370,7 @@ server.tool(
 
       // Fetch from API (returns well-known lists) and merge with local registry
       const apiLists = await makePagedGraphRequest<TaskList>(`${MS_GRAPH_BASE}/me/todo/lists`, token)
-      const lists = mergeLists(apiLists)
+      const lists = await mergeLists(apiLists)
 
       if (lists.length === 0) {
         return {
@@ -450,7 +451,7 @@ server.tool(
 
       // Fetch from API (returns well-known lists) and merge with local registry
       const apiLists = await makePagedGraphRequest<TaskList>(`${MS_GRAPH_BASE}/me/todo/lists`, token)
-      const lists = mergeLists(apiLists)
+      const lists = await mergeLists(apiLists)
 
       if (lists.length === 0) {
         return {
@@ -721,7 +722,7 @@ server.tool(
       }
 
       // Persist to local registry so get-task-lists can find it
-      saveList({
+      await saveList({
         id: response.id,
         displayName: response.displayName,
         wellknownListName: response.wellknownListName,
@@ -796,7 +797,7 @@ server.tool(
       }
 
       // Keep registry in sync
-      updateList(listId, response.displayName)
+      await updateList(listId, response.displayName)
 
       return {
         content: [
@@ -847,7 +848,7 @@ server.tool(
       await makeGraphRequest<null>(url, token, "DELETE")
 
       // Remove from local registry
-      removeList(listId)
+      await removeList(listId)
 
       // If we get here, the delete was successful (204 No Content)
       return {
@@ -1977,6 +1978,13 @@ server.tool(
 // Main function to start the server
 export async function startServer(config?: ServerConfig): Promise<void> {
   try {
+    // Bring the schema up to date before anything can query it. This is a no-op once the
+    // database is current, so it is safe on every boot. Set AUTO_MIGRATE=false if you would
+    // rather gate migrations behind `npm run migrate` in your deploy pipeline.
+    if (process.env.AUTO_MIGRATE !== "false") {
+      await migrate()
+    }
+
     // Check if using a personal Microsoft account and show warning if needed
     await isPersonalMicrosoftAccount()
 

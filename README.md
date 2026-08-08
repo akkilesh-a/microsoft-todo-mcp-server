@@ -41,7 +41,8 @@ You authenticate once via the dashboard. Tokens are stored on your server and au
 
 ## Features
 
-- **Fixes personal account list limitation** — SQLite registry ensures all your lists are always visible
+- **Fixes personal account list limitation** — a local list registry ensures all your lists are always visible
+- **SQLite or Postgres** — zero-config SQLite file by default, or point `DATABASE_URL` at Postgres
 - **HTTP transport** — connect from any machine, not just localhost
 - **Dashboard** — web UI to connect your Microsoft account and get copy-paste setup commands for Claude Code, Cursor, and Claude Desktop
 - **API key auth** — protects the `/mcp` endpoint
@@ -151,6 +152,55 @@ claude mcp add --transport http mstodo https://todo-mcp.yourdomain.com/mcp \
 
 ---
 
+## Database
+
+The list registry is stored in **SQLite by default** — a `lists.db` file created on first run, nothing to configure. Set `DATABASE_URL` and it uses **Postgres** instead.
+
+```bash
+# SQLite (default) — optional custom path
+LIST_DB_PATH=/data/lists.db
+
+# Postgres — set this and the SQLite file is ignored entirely
+DATABASE_URL=postgres://user:password@host:5432/dbname
+```
+
+For hosted Postgres (Neon, Supabase, RDS) whose certificate chain Node will not verify by default, set `DATABASE_SSL=no-verify`. The connection stays encrypted; only chain validation is skipped.
+
+> OAuth tokens are **not** in the database — they stay in `tokens.json` (`MSTODO_TOKEN_FILE`), so the server still needs a persistent path for that file either way.
+
+### Sharing a database with other applications
+
+Every table this server creates can be namespaced with a prefix, so one Postgres database can host this alongside your other apps:
+
+```bash
+DB_TABLE_PREFIX=mstodo_
+```
+
+That yields `mstodo_lists` and `mstodo_schema_migrations`. The prefix deliberately covers the migration bookkeeping table too — without it, two apps each using a bare `schema_migrations` would corrupt each other's version history and silently skip migrations. It must match a plain identifier pattern (letters, digits and underscores, not starting with a digit); anything else is rejected at startup rather than interpolated into SQL.
+
+The prefix is empty by default, which leaves existing `lists.db` files working untouched.
+
+### Migrations
+
+Migrations are plain `.sql` files under `migrations/<dialect>/`, applied in filename order and recorded in `<prefix>schema_migrations`.
+
+They run **automatically on startup** and are a no-op once the schema is current, so a normal deploy needs no extra step. To run them yourself instead:
+
+```bash
+npm run migrate                # apply anything outstanding
+AUTO_MIGRATE=false npm start   # and stop the server from doing it
+```
+
+Adding a migration means dropping `002_whatever.sql` into **both** `migrations/postgres/` and `migrations/sqlite/`. Use `{{prefix}}` wherever a table name appears — the runner substitutes it:
+
+```sql
+ALTER TABLE {{prefix}}lists ADD COLUMN color TEXT;
+```
+
+Each migration is applied in a transaction together with its version row, so a failure part-way leaves neither a half-built schema nor a version record claiming success.
+
+---
+
 ## Security
 
 | Layer | Protection |
@@ -167,7 +217,7 @@ Always set `DASHBOARD_PASSWORD`. Without it, anyone who knows your URL can visit
 ### Task Lists
 | Tool | Description |
 |------|-------------|
-| `get-task-lists` | List all task lists (API + local SQLite registry) |
+| `get-task-lists` | List all task lists (API + local registry) |
 | `create-task-list` | Create a new list |
 | `update-task-list` | Rename a list |
 | `delete-task-list` | Delete a list and all its tasks |

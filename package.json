@@ -9,7 +9,8 @@
     "better-sqlite3": "^12.6.2",
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "pg": "^8.16.3"
   },
   "scripts": {
     "build": "tsup",
@@ -17,7 +18,8 @@
     "dev": "npm run build && node dist/todo-index.js",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.{ts,html,json}\" \"*.{json,md}\"",
-    "format:check": "prettier --check \"src/**/*.{ts,html,json}\" \"*.{json,md}\""
+    "format:check": "prettier --check \"src/**/*.{ts,html,json}\" \"*.{json,md}\"",
+    "migrate": "node dist/db/migrate-cli.js"
   },
   "repository": {
     "type": "git",
@@ -43,10 +45,12 @@
     "@types/node": "^22.19.0",
     "prettier": "^3.6.2",
     "tsup": "^8.5.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "@types/pg": "^8.15.5"
   },
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "migrations"
   ]
 }
