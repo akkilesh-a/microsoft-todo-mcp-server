@@ -1,4 +1,4 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
+import { McpServer, ToolCallback } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js"
 import { z } from "zod"
 import { readFileSync, writeFileSync, existsSync } from "fs"
@@ -69,11 +69,39 @@ console.error("Current working directory:", process.cwd())
 const MS_GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 const USER_AGENT = "microsoft-todo-mcp-server/1.0"
 
-// Create server instance
-const server = new McpServer({
-  name: "mstodo",
-  version: "1.0.0",
-})
+// Tool registrations are collected here and replayed onto a FRESH McpServer per connection.
+//
+// They used to be applied to one module-level singleton, which the /mcp handler closed and
+// reconnected as clients came and went. An McpServer is a Protocol instance and cannot be
+// reconnected — "Already connected to a transport ... use a separate Protocol instance per
+// connection" — so any connection that attached a transport without completing the handshake
+// left the singleton connected while the session map stayed empty. Every later request then
+// skipped the close, called connect() on a live server, and threw. The result was a permanent
+// 500 on /mcp with /health still reporting ok, which is a wedge nothing alerts on.
+//
+// A server per session also lets two clients (the local Hermes rig and the one on the VPS)
+// hold sessions at the same time instead of evicting each other.
+const registrations: Array<(server: McpServer) => void> = []
+
+function registerTool<Args extends z.ZodRawShape>(
+  name: string,
+  description: string,
+  paramsSchema: Args,
+  cb: ToolCallback<Args>,
+): void {
+  registrations.push((server) => {
+    server.tool(name, description, paramsSchema, cb)
+  })
+}
+
+function createServer(): McpServer {
+  const server = new McpServer({
+    name: "mstodo",
+    version: "1.0.0",
+  })
+  for (const register of registrations) register(server)
+  return server
+}
 
 // Helper function for making Microsoft Graph API requests
 async function makeGraphRequest<T>(url: string, token: string, method = "GET", body?: any): Promise<T | null> {
@@ -255,7 +283,7 @@ but API access is restricted for personal accounts.
 }
 
 // Server tool to check authentication status
-server.tool(
+registerTool(
   "auth-status",
   "Check if you're authenticated with Microsoft Graph API. Shows current token status and expiration time, and indicates if the token needs to be refreshed.",
   {},
@@ -350,7 +378,7 @@ interface ChecklistItem {
 }
 
 // Register tools
-server.tool(
+registerTool(
   "get-task-lists",
   "Get all Microsoft Todo task lists (the top-level containers that organize your tasks). Shows list names, IDs, and indicates default or shared lists.",
   {},
@@ -425,7 +453,7 @@ server.tool(
 )
 
 // Enhanced organized view of task lists
-server.tool(
+registerTool(
   "get-task-lists-organized",
   "Get all task lists organized into logical folders/categories based on naming patterns, emoji prefixes, and sharing status. Provides a hierarchical view similar to folder organization.",
   {
@@ -682,7 +710,7 @@ server.tool(
   },
 )
 
-server.tool(
+registerTool(
   "create-task-list",
   "Create a new task list (top-level container) in Microsoft Todo to help organize your tasks into categories or projects.",
   {
@@ -751,7 +779,7 @@ server.tool(
   },
 )
 
-server.tool(
+registerTool(
   "update-task-list",
   "Update the name of an existing task list (top-level container) in Microsoft Todo.",
   {
@@ -820,7 +848,7 @@ server.tool(
   },
 )
 
-server.tool(
+registerTool(
   "delete-task-list",
   "Delete a task list (top-level container) from Microsoft Todo. This will remove the list and all tasks within it.",
   {
@@ -872,7 +900,7 @@ server.tool(
   },
 )
 
-server.tool(
+registerTool(
   "get-tasks",
   "Get tasks from a specific Microsoft Todo list. These are the main todo items that can contain checklist items (subtasks).",
   {
@@ -1005,7 +1033,7 @@ server.tool(
   },
 )
 
-server.tool(
+registerTool(
   "create-task",
   "Create a new task in a specific Microsoft Todo list. A task is the main todo item that can have a title, description, due date, and other properties.",
   {
@@ -1135,7 +1163,7 @@ server.tool(
   },
 )
 
-server.tool(
+registerTool(
   "update-task",
   "Update an existing task in Microsoft Todo. Allows changing any properties of the task including title, due date, importance, etc.",
   {
@@ -1298,7 +1326,7 @@ server.tool(
   },
 )
 
-server.tool(
+registerTool(
   "delete-task",
   "Delete a task from a Microsoft Todo list. This will remove the task and all its checklist items (subtasks).",
   {
@@ -1348,7 +1376,7 @@ server.tool(
   },
 )
 
-server.tool(
+registerTool(
   "get-checklist-items",
   "Get checklist items (subtasks) for a specific task. Checklist items are smaller steps or components that belong to a parent task.",
   {
@@ -1440,7 +1468,7 @@ server.tool(
   },
 )
 
-server.tool(
+registerTool(
   "create-checklist-item",
   "Create a new checklist item (subtask) for a task. Checklist items help break down a task into smaller, manageable steps.",
   {
@@ -1512,7 +1540,7 @@ server.tool(
   },
 )
 
-server.tool(
+registerTool(
   "update-checklist-item",
   "Update an existing checklist item (subtask). Allows changing the text content or completion status of the subtask.",
   {
@@ -1601,7 +1629,7 @@ server.tool(
   },
 )
 
-server.tool(
+registerTool(
   "delete-checklist-item",
   "Delete a checklist item (subtask) from a task. This removes just the specific subtask, not the parent task.",
   {
@@ -1653,7 +1681,7 @@ server.tool(
 )
 
 // Bulk archive completed tasks
-server.tool(
+registerTool(
   "archive-completed-tasks",
   "Move completed tasks older than a specified number of days from one list to another (archive) list. Useful for cleaning up active lists while preserving historical tasks.",
   {
@@ -1799,7 +1827,7 @@ server.tool(
 )
 
 // Test tool to explore Graph API for hidden properties
-server.tool(
+registerTool(
   "test-graph-api-exploration",
   "Test various Graph API queries to discover hidden properties or endpoints for folder/group organization in Microsoft To Do.",
   {
@@ -2130,64 +2158,105 @@ export async function startServer(config?: ServerConfig): Promise<void> {
       }
     })
 
-    // Session store — one transport per connected client
-    const sessions = new Map<string, StreamableHTTPServerTransport>()
-    // Mutex to prevent concurrent new-session races
-    let connecting = false
+    // Session store — one McpServer AND one transport per connected client.
+    //
+    // Both are per-session deliberately. The SDK's McpServer is a Protocol instance: it can be
+    // connected exactly once, and close() does not make it reusable. Sharing one across clients
+    // is what produced "Already connected to a transport" and a permanently 500-ing /mcp.
+    //
+    // Nothing here evicts anyone: several clients can hold sessions at once, which is the
+    // normal case (a local dev rig and the deployed agent, or two agents).
+    interface Session {
+      server: McpServer
+      transport: StreamableHTTPServerTransport
+    }
+    const sessions = new Map<string, Session>()
+
+    // Every /mcp handler runs through this. Express 5 forwards a rejected promise to its
+    // default error handler, which answers with an HTML page — unreadable to an MCP client and
+    // invisible in its logs beyond "500". A JSON-RPC error at least names the failure.
+    async function handleMcp(req: Request, res: Response, fn: () => Promise<void>): Promise<void> {
+      try {
+        await fn()
+      } catch (err: any) {
+        console.error(`MCP ${req.method} ${req.path} failed:`, err)
+        if (res.headersSent) return
+        res.status(500).json({
+          jsonrpc: "2.0",
+          error: { code: -32603, message: `Internal error: ${err?.message ?? String(err)}` },
+          id: null,
+        })
+      }
+    }
 
     app.post("/mcp", async (req: Request, res: Response) => {
-      const sessionId = req.headers["mcp-session-id"] as string | undefined
+      await handleMcp(req, res, async () => {
+        const sessionId = req.headers["mcp-session-id"] as string | undefined
 
-      if (sessionId && sessions.has(sessionId)) {
-        // Existing session — reuse transport
-        await sessions.get(sessionId)!.handleRequest(req, res, req.body)
-        return
-      }
-
-      // Reject concurrent new-session attempts
-      if (connecting) {
-        res.status(503).json({ error: "Server is connecting. Retry shortly." })
-        return
-      }
-
-      connecting = true
-      try {
-        // Close any existing session before accepting a new one
-        if (sessions.size > 0) {
-          try { await server.close() } catch {}
-          sessions.clear()
+        const existing = sessionId ? sessions.get(sessionId) : undefined
+        if (existing) {
+          await existing.transport.handleRequest(req, res, req.body)
+          return
         }
 
-        const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
+        // A session id we don't know is a client resuming across a restart of this process.
+        // Telling it so is better than silently minting a second session it won't use.
+        if (sessionId) {
+          res.status(404).json({
+            jsonrpc: "2.0",
+            error: { code: -32001, message: "Unknown session — reinitialize" },
+            id: null,
+          })
+          return
+        }
+
+        const server = createServer()
+        const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (id: string): void => { sessions.set(id, transport) },
+          onsessioninitialized: (id: string): void => { sessions.set(id, { server, transport }) },
         })
-        transport.onclose = () => {
+        // Drop the map entry and the server together — a server whose transport has closed is
+        // dead weight, and leaving it registered is how the old leak started.
+        transport.onclose = (): void => {
           if (transport.sessionId) sessions.delete(transport.sessionId)
+          void server.close().catch(() => {})
         }
-        await server.connect(transport)
-        await transport.handleRequest(req, res, req.body)
-      } finally {
-        connecting = false
-      }
+
+        try {
+          await server.connect(transport)
+          await transport.handleRequest(req, res, req.body)
+        } catch (err) {
+          // The handshake failed, so onsessioninitialized never ran and onclose may not either.
+          // Tear down here or this server stays connected with nothing pointing at it.
+          if (transport.sessionId) sessions.delete(transport.sessionId)
+          await server.close().catch(() => {})
+          throw err
+        }
+      })
     })
 
     app.get("/mcp", async (req: Request, res: Response) => {
-      const sessionId = req.headers["mcp-session-id"] as string | undefined
-      if (!sessionId || !sessions.has(sessionId)) {
-        res.status(400).json({ error: "Invalid or missing session ID" })
-        return
-      }
-      await sessions.get(sessionId)!.handleRequest(req, res)
+      await handleMcp(req, res, async () => {
+        const sessionId = req.headers["mcp-session-id"] as string | undefined
+        const session = sessionId ? sessions.get(sessionId) : undefined
+        if (!session) {
+          res.status(400).json({ error: "Invalid or missing session ID" })
+          return
+        }
+        await session.transport.handleRequest(req, res)
+      })
     })
 
     app.delete("/mcp", async (req: Request, res: Response) => {
-      const sessionId = req.headers["mcp-session-id"] as string | undefined
-      if (sessionId && sessions.has(sessionId)) {
-        await sessions.get(sessionId)!.close()
-        sessions.delete(sessionId)
-      }
-      res.status(200).end()
+      await handleMcp(req, res, async () => {
+        const sessionId = req.headers["mcp-session-id"] as string | undefined
+        const session = sessionId ? sessions.get(sessionId) : undefined
+        if (session) {
+          // close() fires transport.onclose, which deletes the entry and closes the server.
+          await session.transport.close()
+        }
+        res.status(200).end()
+      })
     })
 
     const port = parseInt(process.env.PORT ?? "3001", 10)
